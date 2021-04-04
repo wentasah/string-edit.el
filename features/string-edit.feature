@@ -133,3 +133,40 @@ Feature: Edit string at point
     And I type "test"
     And I press "C-c C-c"
     Then I should see "s = "my teststring""
+
+  Scenario: Simple c-string
+    Given I turn on c-mode
+    And I insert "char *s = "my \"string\"\n";"
+    When I go to the front of the word "string"
+    And I edit the string at point
+    Then I should see "my "string""
+
+  Scenario: Multiline c-string
+    Given I turn on c-mode
+    And I insert:
+    """
+    char *s = "my string\n"
+              "continues here\n";
+    """
+    When I go to the front of the word "string"
+    And I edit the string at point
+    Then I should see:
+    """
+    my string
+    continues here
+    """
+
+  Scenario: Multiline c-string
+    Given I turn on c-mode
+    And I insert:
+    """
+    char *s = "my string\n"
+              "continues here\n";
+    """
+    When I go to the front of the word "here"
+    And I edit the string at point
+    Then I should see:
+    """
+    my string
+    continues here
+    """

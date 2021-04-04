@@ -92,9 +92,11 @@ This saves you from needing to manually escape characters."
       (indent-region beg end))))
 
 (defun se/find-original ()
-  (if (derived-mode-p 'js2-mode 'js-mode)
-      (se/js-strings-at-point)
-    (se/string-at-point)))
+  (cond ((derived-mode-p 'js2-mode 'js-mode)
+	 (se/js-strings-at-point))
+	((derived-mode-p 'c-mode 'c++-mode)
+	 (se/c-strings-at-point))
+	(t (se/string-at-point))))
 
 (defun se/guess-at-major-mode ()
   (save-excursion
@@ -266,6 +268,66 @@ This saves you from needing to manually escape characters."
       (end-of-line)
       (unless (eobp)
         (insert "\" +")))))
+
+;; C/C++ strings - automatically concatenated by the compiler
+
+(defun se/c-strings-at-point ()
+  (let ((quote (char-to-string (se/current-quotes-char)))
+        beg end)
+    (save-excursion
+      (se/move-point-backward-out-of-string)
+      (while (looking-back (concat (regexp-quote quote) "[\n\r\t ]*"))
+        (goto-char (match-beginning 0))
+        (se/move-point-backward-out-of-string))
+      (setq beg (point)))
+    (save-excursion
+      (se/move-point-forward-out-of-string)
+      (while (looking-at (concat "[\n ]*" (regexp-quote quote)))
+        (goto-char (match-end 0))
+        (se/move-point-forward-out-of-string))
+      (setq end (point)))
+    `((:beg . ,beg)
+      (:end . ,end)
+      (:raw . ,(buffer-substring-no-properties beg end))
+      (:cleanup . ,(-partial 'se/c-strings-at-point/clean-up quote))
+      (:escape . ,(-partial 'se/c-strings-at-point/escape quote)))))
+
+(defun se/c-strings-at-point/clean-up (quote)
+  (save-excursion
+    (goto-char (point-max))
+    (delete-char (- (length quote)))
+    (goto-char (point-min))
+    (delete-char (length quote))
+    (goto-char (point-min))
+    (while (re-search-forward (rx (literal quote) (0+ whitespace) "\n"
+				  (0+ whitespace) (literal quote))
+			      nil t)
+      (replace-match ""))
+    (se/unescape quote)
+    (se/unescape-ws "n" "\n")
+    (se/unescape-ws "r" "\r")
+    (se/unescape-ws "t" "\t")
+    (se/unescape-ws "v" "\v")
+    (se/unescape "\\")))
+
+(defun se/c-strings-at-point/escape (quote)
+  (save-excursion
+    (se/escape "\\")
+    (se/escape-ws "r" "\r")
+    (se/escape-ws "t" "\t")
+    (se/escape-ws "v" "\v")
+    (se/escape quote)
+    (goto-char (point-min))
+    (while (re-search-forward "^" nil t)
+      (unless (bobp)
+        (insert "\""))
+      (end-of-line)
+      (when (looking-at (rx "\n"))
+	(insert "\\n"))
+      (when (looking-at (rx "\n" buffer-end))
+	(delete-char 1))
+      (unless (eobp)
+	(insert "\"")))))
 
 (provide 'string-edit)
 ;;; string-edit.el ends here
